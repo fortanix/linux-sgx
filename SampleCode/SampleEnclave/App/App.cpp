@@ -144,7 +144,7 @@ void print_error_message(sgx_status_t ret)
             break;
         }
     }
-    
+
     if (idx == ttl)
     	printf("Error code is 0x%X. Please refer to the \"Intel SGX SDK Developer Reference\" for more details.\n", ret);
 }
@@ -155,7 +155,7 @@ void print_error_message(sgx_status_t ret)
 int initialize_enclave(void)
 {
     sgx_status_t ret = SGX_ERROR_UNEXPECTED;
-    
+
     /* Call sgx_create_enclave to initialize an enclave instance */
     /* Debug Support: set 2nd parameter to 1 */
     ret = sgx_create_enclave(ENCLAVE_FILENAME, SGX_DEBUG_FLAG, NULL, NULL, &global_eid, NULL);
@@ -170,8 +170,8 @@ int initialize_enclave(void)
 /* OCall functions */
 void ocall_print_string(const char *str)
 {
-    /* Proxy/Bridge will check the length and null-terminate 
-     * the input string to prevent buffer overflow. 
+    /* Proxy/Bridge will check the length and null-terminate
+     * the input string to prevent buffer overflow.
      */
     printf("%s", str);
 }
@@ -188,15 +188,15 @@ int SGX_CDECL main(int argc, char *argv[])
     if(initialize_enclave() < 0){
         printf("Enter a character before exit ...\n");
         getchar();
-        return -1; 
+        return -1;
     }
- 
+
     /* Utilize edger8r attributes */
     edger8r_array_attributes();
     edger8r_pointer_attributes();
     edger8r_type_attributes();
     edger8r_function_attributes();
-    
+
     /* Utilize trusted libraries */
     ecall_libc_functions();
     ecall_libcxx_functions();
@@ -204,7 +204,9 @@ int SGX_CDECL main(int argc, char *argv[])
 
     /* Destroy the enclave */
     sgx_destroy_enclave(global_eid);
-    
+
+    //int ret = femc_runner_get_agent_version(NULL);
+
     printf("Info: SampleEnclave successfully returned.\n");
 
     printf("Enter a character before exit ...\n");
