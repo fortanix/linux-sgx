@@ -88,7 +88,15 @@ typedef struct _sgx_rsa3072_key_t
     uint8_t e[SGX_RSA3072_PUB_EXP_SIZE];
 } sgx_rsa3072_key_t;
 typedef uint8_t sgx_rsa3072_signature_t[SGX_RSA3072_KEY_SIZE];
+typedef struct {
+    uint8_t key_bytes[AES_CMAC_128_KEY_SIZE];
+} femc_aes_cmac_128_key_t;
+
+__attribute__((__packed__)) struct femc_aes_cmac_128_mac {
+    uint8_t mac[AES_CMAC_128_MAC_SIZE];
+}
 */
+
 
 typedef struct rsa3072_pk_context_t
 {
@@ -96,7 +104,9 @@ typedef struct rsa3072_pk_context_t
     sgx_rsa3072_key_t rsa3072;
 } rsa3072_pk_context_t;
 
-
+//typedef uint8_t sgx_cmac_128bit_key_t[SGX_CMAC_KEY_SIZE];
+// typedef uint8_t sgx_cmac_128bit_tag_t[SGX_CMAC_MAC_SIZE];
+//
 static int64_t femc_cb_sig (void *opaque_signing_context, uint8_t *data,
         size_t data_len, size_t max_sig_len, struct  femc_sig *signature,
         size_t *sig_len, femc_signing_algorithm_t *algorithm)
@@ -112,21 +122,6 @@ static int64_t femc_cb_sig (void *opaque_signing_context, uint8_t *data,
 
     //ret = DkPkSign(ctx, md_alg, digest.md, sizeof(digest.md),
     //       (unsigned char *)&signature->sig, sig_len, db_rng, NULL);
-    sgx_status_t stat = sgx_rsa3072_sign(data, ata_len,
-        //const sgx_rsa3072_key_t *p_key,
-        & ctx.rsa3072;
-        sgx_rsa3072_signature_t *p_signature);
-
-    if (stat != SGX_SUCCESS) {
-        //z_log(Z_LOG_ERROR, "Error DkPksign %d\n", ret);
-        goto out;
-    }
-    *algorithm = SIGN_SHA256_RSA;
-    ret = 0;
-out:
-    return ret;
-
-
     /** Computes signature for a given data based on RSA 3072 private key
     *
     * A digital signature over a message consists of a 3072 bit number.
@@ -142,10 +137,24 @@ out:
     *				Note: In IPP based version p_key->e is unused, hence it can be NULL.
     *   Output: sgx_rsa3072_signature_t *p_signature - Pointer to the signature output
     */
+    sgx_status_t stat = sgx_rsa3072_sign(data, data_len,
+        //const sgx_rsa3072_key_t *p_key,
+        & ctx.rsa3072;
+        signature->sig);
+
+    if (stat != SGX_SUCCESS) {
+        //z_log(Z_LOG_ERROR, "Error DkPksign %d\n", ret);
+        goto out;
+    }
+    *algorithm = SIGN_SHA256_RSA;
+    ret = 0;
+out:
+    return ret;
+
 }
 
 
-static int64_t db_femc_cb_verify_sha256_rsa (uint8_t *public_key,
+static int64_t femc_cb_verify_sha256_rsa (uint8_t *public_key,
         size_t public_key_len, uint8_t *data, size_t data_len,
         uint8_t *signature, size_t sig_len)
 {
@@ -153,29 +162,15 @@ static int64_t db_femc_cb_verify_sha256_rsa (uint8_t *public_key,
     PAL_PK_CONTEXT pub_ctx;
     struct femc_sha256_digest digest;
 
-    ret = DkPublicKeyParse(&pub_ctx, public_key, public_key_len);
-    if (ret) {
-        z_log(Z_LOG_ERROR, "Error DkPublicKeyParse %d\n", ret);
-        goto out;
-    }
-
     ret = femc_cb_sha256(data_len, data, &digest);
     if (ret) {
         z_log(Z_LOG_ERROR, "Error db_femc_cb_sha256 %d\n", ret);
         goto out;
     }
 
-    ret = DkPkVerify(&pub_ctx, PAL_MD_SHA256,
+    /*ret = DkPkVerify(&pub_ctx, PAL_MD_SHA256,
             digest.md, sizeof(digest.md), signature, sig_len);
-    if (ret) {
-        z_log(Z_LOG_ERROR, "Error DkPkVerify %d\n", ret);
-        goto out;
-    }
-
-out:
-    return ret;
-
-
+    */
     /** Verifies the signature for the given data based on the RSA 3072 public key.
     *
     * A digital signature over a message consists of a 3072 bit number.
@@ -195,16 +190,25 @@ out:
     *           sgx_rsa3072_signature_t *p_signature - Pointer to the signature
     *   Output: sgx_rsa_result_t *p_result - Pointer to the result of verification check
     */
-    sgx_status_t sgx_rsa3072_verify(const uint8_t *p_data,
-        uint32_t data_size,
+
+    sgx_status_t ret = sgx_rsa3072_verify(data,
+        data_len,
         const sgx_rsa3072_public_key_t *p_public,
         const sgx_rsa3072_signature_t *p_signature,
 		sgx_rsa_result_t *p_result);
+    if (ret) {
+        //z_log(Z_LOG_ERROR, "Error DkPkVerify %d\n", ret);
+        goto out;
+    }
+
+out:
+    return ret;
+
 
 }
 
 
-static int64_t db_femc_cb_aes_cmac_128 (femc_aes_cmac_128_key_t *key, uint8_t *data,
+static int64_t femc_cb_aes_cmac_128 (femc_aes_cmac_128_key_t *key, uint8_t *data,
         size_t data_len, struct femc_aes_cmac_128_mac *mac)
 {
     const PAL_CIPHER_INFO *cipher_info;
@@ -217,10 +221,10 @@ static int64_t db_femc_cb_aes_cmac_128 (femc_aes_cmac_128_key_t *key, uint8_t *d
                         data_len,
                         (unsigned char *)mac);
 
-    sgx_status_t SGXAPI sgx_rijndael128_cmac_msg(const sgx_cmac_128bit_key_t *p_key,
-                                                    const uint8_t *p_src,
-                                                    uint32_t src_len,
-                                                    sgx_cmac_128bit_tag_t *p_mac);
+    sgx_status_t ret = sgx_rijndael128_cmac_msg(key->key_bytes,
+                                                    data,
+                                                    data_len,
+                                                    mac->mac);
 }
 
 
@@ -265,7 +269,7 @@ static int init_femc_crypto (struct femc_enclave_ctx_init_args *femc_ctx_args,
     int ret;
     femc_ctx_args->crypto_functions.hash_sha256 = db_femc_cb_sha256;
     femc_ctx_args->crypto_functions.verify_sha256_rsa = db_femc_cb_verify_sha256_rsa;
-    femc_ctx_args->crypto_functions.aes_cmac_128 = db_femc_cb_aes_cmac_128;
+    femc_ctx_args->crypto_functions.aes_cmac_128 = femc_cb_aes_cmac_128;
     ret = db_init_femc_signer(femc_ctx_args, pk_ctx);
     return ret;
 }
@@ -299,6 +303,151 @@ init_femc_global_args(struct femc_enclave_global_init_args *global_args)
 
 
 typedef struct femc_encl_context PAL_FEMC_CONTEXT;
+
+
+// Local attestation, Needs cert fields
+static int _FEMCLocalAttestation (PAL_FEMC_CONTEXT *femc_ctx,
+        struct femc_la_rsp **la_rsp, PAL_STR subject)
+{
+    int ret = 0;
+    struct femc_data_bytes *tgt_info = NULL;
+    struct femc_la_req *la_req = NULL;
+    size_t la_req_size;
+    struct femc_la_rsp *la_rsp_temp = NULL;
+
+    // Generate Local Attestation Request:
+    struct femc_data_bytes const * const extra_subject = NULL;
+    struct femc_data_bytes const *extra_attr = NULL;
+
+    ret = ocall_get_targetinfo(femc_ctx, &tgt_info);
+    if (ret < 0) {
+        z_log(Z_LOG_ERROR, "ocall_get_targetinfo error %d\n", ret);
+        goto out;
+    }
+    // Generate Local Attestation Request:
+    ret = femc_generate_la_req(&la_req, &la_req_size, femc_ctx, &tgt_info,
+            subject, strlen(subject), extra_subject, extra_attr);
+    if (ret != FEMC_STATUS_SUCCESS) {
+        z_log(Z_LOG_ERROR, "femc_generate_la_req error %d\n", ret);
+        ret = -PAL_ERROR_INVAL;
+        goto out;
+    }
+    // Ocall to attest with node agent
+    ret = ocall_local_attest(femc_ctx, &la_req, &la_rsp_temp, &la_req_size);
+    if (ret < 0) {
+        z_log(Z_LOG_ERROR, "ocall_local_attest error %d\n", ret);
+        goto out;
+    }
+out:
+    *la_rsp = la_rsp_temp;
+    if (la_req) {
+        free_la_req(femc_ctx, &la_req);
+    }
+    if (tgt_info) {
+        free_tgt_info_rsp(femc_ctx, &tgt_info);
+    }
+    return ret;
+}
+
+// Remote attestation
+static int _FEMCRemoteAttestation (PAL_FEMC_CONTEXT *femc_ctx,
+    struct femc_la_rsp **la_rsp, struct femc_ra_rsp **ra_rsp, PAL_STR subject)
+{
+
+    int ret = 0;
+
+    /* TODO: fill cert info*/
+    struct femc_data_bytes const * const extra_subject = NULL;
+    struct femc_data_bytes const *extra_attr = NULL;
+
+    struct femc_ra_req *ra_req = NULL;
+    size_t ra_req_size;
+    struct femc_ra_rsp *ra_rsp_tmp = NULL;
+
+    // frees la_rsp
+    ret = femc_generate_ra_req(femc_ctx, &ra_req, &ra_req_size,
+            la_rsp, subject, strlen(subject), extra_subject, extra_attr);
+    if (ret != FEMC_STATUS_SUCCESS) {
+        z_log(Z_LOG_ERROR, "femc_generate_ra_req error %d\n", ret);
+        ret = -PAL_ERROR_INVAL;
+        goto out;
+    }
+    // Ocall to send ra_req_oe to node agent to get ra_rsp_oe
+    ret = ocall_remote_attest(femc_ctx, &ra_req, &ra_rsp_tmp, &ra_req_size);
+    if (ret < 0) {
+        z_log(Z_LOG_ERROR, "ocall_remote_attest error %d\n", ret);
+        goto out;
+    }
+    // Verify ra_resp
+    ret = verify_ra_rsp(femc_ctx, ra_rsp_tmp);
+
+    if (ret != FEMC_STATUS_SUCCESS) {
+        z_log(Z_LOG_ERROR, "verify_ra_rsp error %d\n", ret);
+        ret = -PAL_ERROR_INVAL;
+        goto out;
+    }
+
+out:
+    *ra_rsp = ra_rsp_tmp;
+    if (ra_req) {
+        free_ra_req(femc_ctx, &ra_req);
+    }
+    if (ret) {
+        if (*ra_rsp) {
+            free(*ra_rsp);
+            *ra_rsp = NULL;
+        }
+    }
+
+
+    return ret;
+}
+
+
+int _DkFEMCCertProvision(PAL_FEMC_CONTEXT *femc_ctx, PAL_STR subject, void **femc_cert)
+{
+    int ret = 0;
+
+    struct femc_la_rsp *la_rsp = NULL;
+    struct femc_ra_rsp *ra_rsp = NULL;
+
+    ret = _FEMCLocalAttestation (femc_ctx, &la_rsp, subject);
+    if (ret) {
+        z_log(Z_LOG_ERROR, "Femc local attestation failed \n");
+        goto out;
+    }
+
+    ret = _FEMCRemoteAttestation (femc_ctx, &la_rsp, &ra_rsp, subject);
+    if (ret || ra_rsp == NULL || ra_rsp->app_cert.data_len < 1) {
+        z_log(Z_LOG_ERROR, "Femc remote attestation failed \n");
+        goto out;
+    }
+
+    // Check PEM is null ternimated -> don't write the last character.
+    assert(ra_rsp->app_cert.pem[ra_rsp->app_cert.data_len -1]=='\0');
+
+    /* Allocate a buffer for the certificate data and pass it
+     * to shim since shim does not have access to free_ra_rsp.
+     * The shim is responsible of freeing this buffer after writing it
+     * to file.
+     */
+    void *cert_data = malloc(ra_rsp->app_cert.data_len);
+    memcpy(cert_data, ra_rsp->app_cert.pem, ra_rsp->app_cert.data_len);
+    *femc_cert = cert_data;
+
+    SGX_DBG(DBG_I, " Femc Attestation response cert recvd: bytes  %d for cert \n  %s\n",
+        ra_rsp->app_cert.data_len, (char*)*femc_cert);
+out:
+    if (la_rsp) {
+        free_la_rsp(femc_ctx, &la_rsp);
+    }
+
+    if (ra_rsp) {
+        free_ra_rsp(femc_ctx, &ra_rsp);
+    }
+
+    return ret;
+}
 
 /* Init femc_context */
 int _FEMCInit (PAL_FEMC_CONTEXT **femc_ctx, int req_type)
@@ -377,15 +526,28 @@ static int ftx_manager_cert_flow (const char* config_key)
         goto out;
     }
 
+    /** Create RSA key pair with <n_byte_size> key size and <e_byte_size> public exponent.
+    *
+    * Parameters:
+    *   Return: sgx_status_t  - SGX_SUCCESS or failure as defined in sgx_error.h
+    *   Inputs: p_e [In/Out] Pointer to the public exponent e.
+    *           n_byte_size [In] Size in bytes of the key modulus.
+    *           e_byte_size	[In] Size in bytes of the key public exponent.
+    *   Output: p_*			[Out] Pointer to the matching key parameter/factor buffer.
+    */
+    sgx_status_t sgx_create_rsa_key_pair(int n_byte_size, int e_byte_size, unsigned char *p_n, unsigned char *p_d, unsigned char *p_e,
+        unsigned char *p_p, unsigned char *p_q, unsigned char *p_dmp1,
+        unsigned char *p_dmq1, unsigned char *p_iqmp);
+
     /* Generate private key and write it to file */
     ret = create_key(config_key, &pk_ctx);
     if (ret != 0) {
-        z_log(Z_LOG_FATAL, "Can't create private key error %d\n", ret);
+        //z_log(Z_LOG_FATAL, "Can't create private key error %d\n", ret);
         goto out;
     }
 
     /* Initialize FEMC context */
-    ret = DkFEMCInit(&femc_ctx, &pk_ctx, FEMC_REQ_ATTEST_KEY);
+    ret = _FEMCInit(&femc_ctx, &pk_ctx, FEMC_REQ_ATTEST_KEY);
     if (!ret) {
         ret = -PAL_ERRNO;
         z_log(Z_LOG_FATAL, "Femc init failed error %d\n", ret);
@@ -426,9 +588,6 @@ out:
 
     return ret;
 }
-
-
-
 
 
 int printf(const char* fmt, ...)
